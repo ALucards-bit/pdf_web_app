@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PDF Studio & OCR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4">
+
+  <div class="max-w-xl w-full bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl text-center">
+    <h1 class="text-3xl font-bold text-emerald-400 mb-2">PDF Studio & OCR</h1>
+    <p class="text-slate-400 text-sm mb-6">Arraste seus arquivos para editar ou aplicar OCR</p>
+
+    <div class="mb-4 text-left">
+      <label class="block text-xs font-medium text-slate-400 mb-1">URL do Backend no Render:</label>
+      <input type="text" id="backend-url" value="http://localhost:8000" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-emerald-400 focus:outline-none" placeholder="https://seu-backend.onrender.com" />
+    </div>
+
+    <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-900/50 rounded-xl p-8 cursor-pointer transition-all flex flex-col items-center justify-center mb-6">
+      <p class="text-slate-300 font-medium mb-1">Arraste e solte seus PDFs aqui</p>
+      <p class="text-xs text-slate-500">ou clique para selecionar</p>
+      <input type="file" id="file-input" multiple accept="application/pdf" class="hidden" />
+    </div>
+
+    <div id="file-list-container" class="hidden mb-6 text-left bg-slate-900/80 p-4 rounded-lg border border-slate-700">
+      <ul id="file-list" class="space-y-1 text-sm text-slate-200"></ul>
+    </div>
+
+    <div class="flex gap-4">
+      <button id="btn-merge" disabled class="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold py-3 px-4 rounded-lg transition">Juntar PDFs</button>
+      <button id="btn-ocr" disabled class="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold py-3 px-4 rounded-lg transition">Aplicar OCR</button>
+    </div>
+
+    <p id="status-message" class="mt-4 text-sm font-medium hidden"></p>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileListContainer = document.getElementById('file-list-container');
+    const fileList = document.getElementById('file-list');
+    const btnMerge = document.getElementById('btn-merge');
+    const btnOcr = document.getElementById('btn-ocr');
+    const statusMessage = document.getElementById('status-message');
+    const backendUrlInput = document.getElementById('backend-url');
+
+    let selectedFiles = [];
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
+      dropZone.addEventListener(e, preventDefaults, false);
+      document.body.addEventListener(e, preventDefaults, false);
+    });
+
+    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+    dropZone.addEventListener('drop', (e) => {
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
+      if (files.length > 0) handleFiles(files);
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => handleFiles(Array.from(e.target.files)));
+
+    function handleFiles(files) {
+      selectedFiles = files;
+      fileList.innerHTML = '';
+      if (selectedFiles.length > 0) {
+        fileListContainer.classList.remove('hidden');
+        selectedFiles.forEach((file, index) => {
+          const li = document.createElement('li');
+          li.className = 'flex justify-between items-center bg-slate-800 p-2 rounded';
+          li.innerHTML = `<span>${index + 1}. ${file.name}</span><span class="text-xs text-slate-400">${(file.size / 1024 / 1024).toFixed(2)} MB</span>`;
+          fileList.appendChild(li);
+        });
+        btnMerge.disabled = selectedFiles.length < 2;
+        btnOcr.disabled = selectedFiles.length === 0;
+      }
+    }
+
+    btnMerge.addEventListener('click', async () => {
+      showStatus('Unindo arquivos no navegador...', 'text-blue-400 animate-pulse');
+      const mergedPdf = await PDFLib.PDFDocument.create();
+      for (const file of selectedFiles) {
+        const pdf = await PDFLib.PDFDocument.load(await file.arrayBuffer());
+        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach(p => mergedPdf.addPage(p));
+      }
+      downloadBlob(await mergedPdf.save(), 'pdf_unido.pdf', 'application/pdf');
+      showStatus('PDFs unidos com sucesso!', 'text-emerald-400');
+    });
+
+    btnOcr.addEventListener('click', async () => {
+      const baseUrl = backendUrlInput.value.replace(/\/$/, "");
+      showStatus('Processando OCR no servidor...', 'text-emerald-400 animate-pulse');
+      const formData = new FormData();
+      formData.append('file', selectedFiles[0]);
+      formData.append('lang', 'por');
+
+      try {
+        const response = await fetch(`${baseUrl}/api/ocr`, { method: 'POST', body: formData });
+        if (!response.ok) throw new Error('Falha no OCR');
+        const blob = await response.blob();
+        downloadBlob(blob, `ocr_${selectedFiles[0].name}`, 'application/pdf');
+        showStatus('OCR concluído!', 'text-emerald-400');
+      } catch (err) {
+        showStatus('Erro: ' + err.message, 'text-rose-400');
+      }
+    });
+
+    function downloadBlob(data, fileName, mimeType) {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+    }
+
+    function showStatus(msg, textClass) {
+      statusMessage.textContent = msg;
+      statusMessage.className = `mt-4 text-sm font-medium ${textClass}`;
+      statusMessage.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

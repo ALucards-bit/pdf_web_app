@@ -1,0 +1,10 @@
+{
+  "name": "pdf-studio-frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npx serve public -l 3000"
+  },
+  "dependencies": {
+    "serve": "^14.2.1"
+  }
+}
