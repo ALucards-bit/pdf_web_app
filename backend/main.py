@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
-import fitz
+import pymupdf as fitz
 import pytesseract
 from pdf2image import convert_from_bytes
 import cv2
