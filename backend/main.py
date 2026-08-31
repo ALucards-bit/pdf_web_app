@@ -1,37 +1,3 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import Response
-from fastapi.middleware.cors import CORSMiddleware
-import pymupdf as fitz
-import pytesseract
-from pdf2image import convert_from_bytes
-import cv2
-import numpy as np
-from PIL import Image
-import io
-
-app = FastAPI(title="PDF OCR API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-def preprocess_image(pil_img: Image.Image) -> Image.Image:
-    open_cv_image = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    processed = cv2.adaptiveThreshold(
-        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    )
-    return Image.fromarray(processed)
-
-@app.get("/")
-def health_check():
-    return {"status": "ok", "service": "PDF OCR Backend"}
-
 @app.post("/api/ocr")
 async def process_ocr(file: UploadFile = File(...), lang: str = Form("por")):
     if not file.filename.lower().endswith(".pdf"):
@@ -52,12 +18,13 @@ async def process_ocr(file: UploadFile = File(...), lang: str = Form("por")):
             pdf_pesquisavel.insert_pdf(page_doc)
             page_doc.close()
 
-        output_buffer = io.BytesIO()
-        pdf_pesquisavel.save(output_buffer)
+        # --- CORREÇÃO AQUI ---
+        # Salva diretamente em bytes via PyMuPDF (tobytes)
+        pdf_final_bytes = pdf_pesquisavel.tobytes()
         pdf_pesquisavel.close()
 
         return Response(
-            content=output_buffer.getvalue(),
+            content=pdf_final_bytes,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=ocr_{file.filename}"}
         )
