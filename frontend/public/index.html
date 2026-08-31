@@ -14,8 +14,8 @@
     <p class="text-slate-400 text-sm mb-6">Arraste seus arquivos para editar ou aplicar OCR</p>
 
     <div class="mb-4 text-left">
-      <label class="block text-xs font-medium text-slate-400 mb-1">[https://pdf-ocr-backend-247y.onrender.com](https://pdf-ocr-backend-247y.onrender.com)</label>
-      <input type="text" id="backend-url" value="[https://pdf-ocr-backend-247y.onrender.com](https://pdf-ocr-backend-247y.onrender.com)" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-emerald-400 focus:outline-none" placeholder="https://seu-backend.onrender.com" />
+      <label class="block text-xs font-medium text-slate-400 mb-1">URL do Backend no Render:</label>
+      <input type="text" id="backend-url" value="https://pdf-ocr-backend-247y.onrender.com" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-emerald-400 focus:outline-none" placeholder="https://seu-backend.onrender.com" />
     </div>
 
     <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-900/50 rounded-xl p-8 cursor-pointer transition-all flex flex-col items-center justify-center mb-6">
@@ -81,14 +81,18 @@
 
     btnMerge.addEventListener('click', async () => {
       showStatus('Unindo arquivos no navegador...', 'text-blue-400 animate-pulse');
-      const mergedPdf = await PDFLib.PDFDocument.create();
-      for (const file of selectedFiles) {
-        const pdf = await PDFLib.PDFDocument.load(await file.arrayBuffer());
-        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-        pages.forEach(p => mergedPdf.addPage(p));
+      try {
+        const mergedPdf = await PDFLib.PDFDocument.create();
+        for (const file of selectedFiles) {
+          const pdf = await PDFLib.PDFDocument.load(await file.arrayBuffer());
+          const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+          pages.forEach(p => mergedPdf.addPage(p));
+        }
+        downloadBlob(await mergedPdf.save(), 'pdf_unido.pdf', 'application/pdf');
+        showStatus('PDFs unidos com sucesso!', 'text-emerald-400');
+      } catch (err) {
+        showStatus('Erro ao unir PDFs: ' + err.message, 'text-rose-400');
       }
-      downloadBlob(await mergedPdf.save(), 'pdf_unido.pdf', 'application/pdf');
-      showStatus('PDFs unidos com sucesso!', 'text-emerald-400');
     });
 
     btnOcr.addEventListener('click', async () => {
@@ -100,7 +104,14 @@
 
       try {
         const response = await fetch(`${baseUrl}/api/ocr`, { method: 'POST', body: formData });
-        if (!response.ok) throw new Error('Falha no OCR');
+        
+        // Trata respostas com erro para não baixar JSON/texto como arquivo PDF
+        if (!response.ok) {
+          const errData = await response.json().catch(() => null);
+          const detail = errData ? errData.detail : `Erro HTTP ${response.status}`;
+          throw new Error(detail);
+        }
+
         const blob = await response.blob();
         downloadBlob(blob, `ocr_${selectedFiles[0].name}`, 'application/pdf');
         showStatus('OCR concluído!', 'text-emerald-400');
