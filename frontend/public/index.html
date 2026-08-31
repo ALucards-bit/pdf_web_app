@@ -11,7 +11,7 @@
 
   <div class="max-w-xl w-full bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl text-center">
     <h1 class="text-3xl font-bold text-emerald-400 mb-2">PDF Studio & OCR</h1>
-    <p class="text-slate-400 text-sm mb-6">Arraste seus arquivos para editar ou aplicar OCR</p>
+    <p class="text-slate-400 text-sm mb-6">Arraste seus arquivos para editar ou converter</p>
 
     <div class="mb-4 text-left">
       <label class="block text-xs font-medium text-slate-400 mb-1">URL do Backend no Render:</label>
@@ -28,9 +28,12 @@
       <ul id="file-list" class="space-y-1 text-sm text-slate-200"></ul>
     </div>
 
-    <div class="flex gap-4">
-      <button id="btn-merge" disabled class="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold py-3 px-4 rounded-lg transition">Juntar PDFs</button>
-      <button id="btn-ocr" disabled class="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold py-3 px-4 rounded-lg transition">Aplicar OCR</button>
+    <!-- Grid de Botões de Ação -->
+    <div class="grid grid-cols-2 gap-3 mb-2">
+      <button id="btn-merge" disabled class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">Juntar PDFs</button>
+      <button id="btn-ocr" disabled class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">OCR (PDF)</button>
+      <button id="btn-word" disabled class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">Para Word (.docx)</button>
+      <button id="btn-excel" disabled class="bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">Para Excel (.xlsx)</button>
     </div>
 
     <p id="status-message" class="mt-4 text-sm font-medium hidden"></p>
@@ -43,6 +46,8 @@
     const fileList = document.getElementById('file-list');
     const btnMerge = document.getElementById('btn-merge');
     const btnOcr = document.getElementById('btn-ocr');
+    const btnWord = document.getElementById('btn-word');
+    const btnExcel = document.getElementById('btn-excel');
     const statusMessage = document.getElementById('status-message');
     const backendUrlInput = document.getElementById('backend-url');
 
@@ -71,14 +76,17 @@
         selectedFiles.forEach((file, index) => {
           const li = document.createElement('li');
           li.className = 'flex justify-between items-center bg-slate-800 p-2 rounded';
-          li.innerHTML = `<span>${index + 1}. ${file.name}</span><span class="text-xs text-slate-400">${(file.size / 1024 / 1024).toFixed(2)} MB</span>`;
+          li.innerHTML = `<span class="truncate max-w-xs">${index + 1}. ${file.name}</span><span class="text-xs text-slate-400 ml-2">${(file.size / 1024 / 1024).toFixed(2)} MB</span>`;
           fileList.appendChild(li);
         });
         btnMerge.disabled = selectedFiles.length < 2;
         btnOcr.disabled = selectedFiles.length === 0;
+        btnWord.disabled = selectedFiles.length === 0;
+        btnExcel.disabled = selectedFiles.length === 0;
       }
     }
 
+    // Ação: Juntar PDFs (Navegador)
     btnMerge.addEventListener('click', async () => {
       showStatus('Unindo arquivos no navegador...', 'text-blue-400 animate-pulse');
       try {
@@ -95,17 +103,26 @@
       }
     });
 
-    btnOcr.addEventListener('click', async () => {
+    // Ação: OCR para PDF
+    btnOcr.addEventListener('click', () => processConversion('/api/ocr', 'pdf', 'OCR (PDF)', 'application/pdf'));
+
+    // Ação: OCR para Word
+    btnWord.addEventListener('click', () => processConversion('/api/convert/word', 'docx', 'Word', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+
+    // Ação: OCR para Excel
+    btnExcel.addEventListener('click', () => processConversion('/api/convert/excel', 'xlsx', 'Excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+
+    // Função genérica de conversão no Backend
+    async function processConversion(endpoint, extension, formatName, mimeType) {
       const baseUrl = backendUrlInput.value.replace(/\/$/, "");
-      showStatus('Processando OCR no servidor...', 'text-emerald-400 animate-pulse');
+      showStatus(`Processando ${formatName}...`, 'text-indigo-400 animate-pulse');
       const formData = new FormData();
       formData.append('file', selectedFiles[0]);
       formData.append('lang', 'por');
 
       try {
-        const response = await fetch(`${baseUrl}/api/ocr`, { method: 'POST', body: formData });
+        const response = await fetch(`${baseUrl}${endpoint}`, { method: 'POST', body: formData });
         
-        // Trata respostas com erro para não baixar JSON/texto como arquivo PDF
         if (!response.ok) {
           const errData = await response.json().catch(() => null);
           const detail = errData ? errData.detail : `Erro HTTP ${response.status}`;
@@ -113,12 +130,13 @@
         }
 
         const blob = await response.blob();
-        downloadBlob(blob, `ocr_${selectedFiles[0].name}`, 'application/pdf');
-        showStatus('OCR concluído!', 'text-emerald-400');
+        const outputName = `${selectedFiles[0].name.replace(/\.[^/.]+$/, "")}_converted.${extension}`;
+        downloadBlob(blob, outputName, mimeType);
+        showStatus(`Processamento de ${formatName} concluído!`, 'text-emerald-400');
       } catch (err) {
         showStatus('Erro: ' + err.message, 'text-rose-400');
       }
-    });
+    }
 
     function downloadBlob(data, fileName, mimeType) {
       const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
@@ -127,6 +145,7 @@
       a.href = url;
       a.download = fileName;
       a.click();
+      window.URL.revokeObjectURL(url);
     }
 
     function showStatus(msg, textClass) {
