@@ -3,6 +3,7 @@ from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 import pytesseract
 from pdf2image import convert_from_bytes
+import pymupdf as fitz
 
 app = FastAPI(title="PDF OCR API")
 
@@ -26,21 +27,33 @@ async def process_ocr(file: UploadFile = File(...), lang: str = Form("por")):
     pdf_bytes = await file.read()
     
     try:
-        # DPI em 120 para garantir que não vai estourar a memória do Render
+        # 1. Converte o PDF em lista de imagens PIL
         images = convert_from_bytes(pdf_bytes, dpi=120)
         
         if not images:
-            raise HTTPException(status_code=400, detail="O PDF parece estar vazio ou corrompido.")
+            raise HTTPException(status_code=400, detail="O PDF está vazio ou corrompido.")
 
-        # Limite de páginas por requisição para a camada gratuita do Render
         if len(images) > 10:
-            raise HTTPException(status_code=400, detail="Envie um PDF com no máximo 10 páginas para este ambiente.")
+            raise HTTPException(status_code=400, detail="Envie um PDF com no máximo 10 páginas.")
 
-        # Processamento direto das imagens com pytesseract
-        pdf_final_bytes = pytesseract.image_to_pdf_or_hocr(images, lang=lang, extension='pdf')
+        # 2. Cria o documento PDF final acumulador
+        pdf_pesquisavel = fitz.open()
+
+        for img in images:
+            # Converte imagem por imagem para PDF em bytes via Tesseract
+            pdf_page_bytes = pytesseract.image_to_pdf_or_hocr(img, lang=lang, extension='pdf')
+            
+            # Abre os bytes da página e insere no documento final
+            page_doc = fitz.open("pdf", pdf_page_bytes)
+            pdf_pesquisavel.insert_pdf(page_doc)
+            page_doc.close()
+
+        # 3. Extrai os bytes finais
+        output_pdf_bytes = pdf_pesquisavel.tobytes()
+        pdf_pesquisavel.close()
 
         return Response(
-            content=pdf_final_bytes,
+            content=output_pdf_bytes,
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=ocr_{file.filename}"}
         )
