@@ -3,43 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF Studio & OCR</title>
+  <title>PDF Studio & Editor</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Dependências para manipulação e edição visual de PDF -->
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  </script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4">
 
-  <div class="max-w-xl w-full bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl text-center">
-    <h1 class="text-3xl font-bold text-emerald-400 mb-2">PDF Studio & OCR</h1>
-    <p class="text-slate-400 text-sm mb-6">Arraste seus arquivos para editar ou converter</p>
+  <div class="max-w-4xl w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-2xl text-center my-8">
+    <h1 class="text-3xl font-bold text-emerald-400 mb-2">PDF Studio & Editor Interativo</h1>
+    <p class="text-slate-400 text-sm mb-6">Converta seus arquivos no backend ou edite e assine diretamente no navegador</p>
 
+    <!-- Configuração do Backend -->
     <div class="mb-4 text-left">
       <label class="block text-xs font-medium text-slate-400 mb-1">URL do Backend no Render:</label>
       <input type="text" id="backend-url" value="https://pdf-ocr-backend-247y.onrender.com" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-emerald-400 focus:outline-none" placeholder="https://seu-backend.onrender.com" />
     </div>
 
-    <!-- Idioma para OCR -->
-    <div class="mb-4 text-left">
-      <label class="block text-xs font-medium text-slate-400 mb-1">Idioma do OCR:</label>
-      <select id="ocrLang" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none">
-        <option value="por" selected>Português (por)</option>
-        <option value="eng">Inglês (eng)</option>
-        <option value="spa">Espanhol (spa)</option>
-      </select>
-    </div>
-
-    <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-900/50 rounded-xl p-8 cursor-pointer transition-all flex flex-col items-center justify-center mb-6">
+    <!-- Zona de Drop / Upload -->
+    <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-900/50 rounded-xl p-6 cursor-pointer transition-all flex flex-col items-center justify-center mb-6">
       <p class="text-slate-300 font-medium mb-1">Arraste e solte seus PDFs aqui</p>
       <p class="text-xs text-slate-500">ou clique para selecionar</p>
-      <input type="file" id="file-input" multiple accept="application/pdf" class="hidden" />
+      <input type="file" id="file-input" accept="application/pdf" class="hidden" />
     </div>
 
     <div id="file-list-container" class="hidden mb-6 text-left bg-slate-900/80 p-4 rounded-lg border border-slate-700">
       <ul id="file-list" class="space-y-1 text-sm text-slate-200"></ul>
     </div>
 
-    <!-- Grid de Botões de Ação -->
-    <div class="grid grid-cols-2 gap-3 mb-2">
+    <!-- Barra de Ferramentas do Editor (Invisível até carregar um PDF) -->
+    <div id="editor-toolbar" class="hidden flex-wrap items-center justify-center gap-2 mb-4 bg-slate-900 p-3 rounded-lg border border-slate-700">
+      <button id="tool-text" class="bg-slate-700 hover:bg-slate-600 text-white font-medium py-1.5 px-3 rounded text-xs">✍️ Adicionar Texto</button>
+      <button id="tool-draw" class="bg-slate-700 hover:bg-slate-600 text-white font-medium py-1.5 px-3 rounded text-xs">✏️ Desenho Livre</button>
+      <label class="bg-slate-700 hover:bg-slate-600 text-white font-medium py-1.5 px-3 rounded text-xs cursor-pointer">
+        🖼️ Adicionar Assinatura/Imagem
+        <input type="file" id="img-input" accept="image/png, image/jpeg" class="hidden" />
+      </label>
+      <button id="btn-export-edited" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-1.5 px-4 rounded text-xs transition ml-auto">💾 Exportar PDF Editado</button>
+    </div>
+
+    <!-- Canvas do Editor Visual -->
+    <div id="editor-container" class="hidden relative overflow-auto max-h-[600px] border border-slate-700 rounded-lg bg-slate-950 flex justify-center p-2 mb-6">
+      <div id="canvas-wrapper" class="relative">
+        <canvas id="pdf-render-canvas" class="block border border-slate-800 shadow-md"></canvas>
+        <canvas id="fabric-canvas" class="absolute top-0 left-0"></canvas>
+      </div>
+    </div>
+
+    <!-- Grid de Botões para Operações de Conversão/OCR -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
       <button id="btn-merge" disabled class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">Juntar PDFs</button>
       <button id="btn-ocr" disabled class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">OCR (PDF)</button>
       <button id="btn-word" disabled class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold py-2.5 px-3 rounded-lg text-xs transition">Para Word (.docx)</button>
@@ -50,6 +67,7 @@
   </div>
 
   <script>
+    // Referências do DOM
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const fileListContainer = document.getElementById('file-list-container');
@@ -61,8 +79,22 @@
     const statusMessage = document.getElementById('status-message');
     const backendUrlInput = document.getElementById('backend-url');
 
-    let selectedFiles = [];
+    // Ferramentas do Editor
+    const editorToolbar = document.getElementById('editor-toolbar');
+    const editorContainer = document.getElementById('editor-container');
+    const pdfRenderCanvas = document.getElementById('pdf-render-canvas');
+    const toolText = document.getElementById('tool-text');
+    const toolDraw = document.getElementById('tool-draw');
+    const imgInput = document.getElementById('img-input');
+    const btnExportEdited = document.getElementById('btn-export-edited');
 
+    let selectedFiles = [];
+    let pdfDoc = null;
+    let fabricCanvas = null;
+    let originalPdfBytes = null;
+    let renderScale = 1.2;
+
+    // Gerenciamento de Drag & Drop
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
       dropZone.addEventListener(e, preventDefaults, false);
       document.body.addEventListener(e, preventDefaults, false);
@@ -78,7 +110,7 @@
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => handleFiles(Array.from(e.target.files)));
 
-    function handleFiles(files) {
+    async function handleFiles(files) {
       selectedFiles = files;
       fileList.innerHTML = '';
       if (selectedFiles.length > 0) {
@@ -89,14 +121,129 @@
           li.innerHTML = `<span class="truncate max-w-xs">${index + 1}. ${file.name}</span><span class="text-xs text-slate-400 ml-2">${(file.size / 1024 / 1024).toFixed(2)} MB</span>`;
           fileList.appendChild(li);
         });
+        
         btnMerge.disabled = selectedFiles.length < 2;
-        btnOcr.disabled = selectedFiles.length === 0;
-        btnWord.disabled = selectedFiles.length === 0;
-        btnExcel.disabled = selectedFiles.length === 0;
+        btnOcr.disabled = false;
+        btnWord.disabled = false;
+        btnExcel.disabled = false;
+
+        // Carrega o primeiro PDF no editor interativo
+        originalPdfBytes = await selectedFiles[0].arrayBuffer();
+        loadPdfInEditor(originalPdfBytes);
       }
     }
 
-    // Ação: Juntar PDFs (Navegador)
+    // Renderiza o PDF e inicializa a camada Fabric.js
+    async function loadPdfInEditor(arrayBuffer) {
+      showStatus('Carregando pré-visualização para edição...', 'text-indigo-400 animate-pulse');
+      try {
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const page = await pdfDoc.getPage(1);
+        const viewport = page.getViewport({ scale: renderScale });
+
+        pdfRenderCanvas.height = viewport.height;
+        pdfRenderCanvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: pdfRenderCanvas.getContext('2d'),
+          viewport: viewport
+        };
+        await page.render(renderContext).promise;
+
+        // Configura a camada sobreposta interativa do Fabric.js
+        if (fabricCanvas) {
+          fabricCanvas.dispose();
+        }
+
+        fabricCanvas = new fabric.Canvas('fabric-canvas', {
+          width: viewport.width,
+          height: viewport.height,
+          isDrawingMode: false
+        });
+
+        // Exibe os elementos da UI do editor
+        editorToolbar.classList.remove('hidden');
+        editorToolbar.classList.add('flex');
+        editorContainer.classList.remove('hidden');
+        showStatus('PDF carregado no editor! Você pode desenhar, adicionar textos ou imagens.', 'text-emerald-400');
+      } catch (err) {
+        showStatus('Erro ao carregar renderizador de PDF: ' + err.message, 'text-rose-400');
+      }
+    }
+
+    // Ferramentas do Editor Interactive
+    toolText.addEventListener('click', () => {
+      fabricCanvas.isDrawingMode = false;
+      const text = new fabric.IText('Clique para editar', {
+        left: 50,
+        top: 50,
+        fontFamily: 'arial',
+        fill: '#ff0000',
+        fontSize: 18
+      });
+      fabricCanvas.add(text);
+      fabricCanvas.setActiveObject(text);
+    });
+
+    toolDraw.addEventListener('click', () => {
+      fabricCanvas.isDrawingMode = !fabricCanvas.isDrawingMode;
+      if (fabricCanvas.isDrawingMode) {
+        fabricCanvas.freeDrawingBrush.width = 3;
+        fabricCanvas.freeDrawingBrush.color = '#0000ff';
+        toolDraw.classList.add('bg-emerald-600');
+      } else {
+        toolDraw.classList.remove('bg-emerald-600');
+      }
+    });
+
+    imgInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (f) => {
+        fabric.Image.fromURL(f.target.result, (img) => {
+          img.scaleToWidth(150);
+          img.set({ left: 100, top: 100 });
+          fabricCanvas.add(img);
+          fabricCanvas.setActiveObject(img);
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Exportar edições feitas no navegador mesclando com o pdf-lib
+    btnExportEdited.addEventListener('click', async () => {
+      showStatus('Exportando documento com as modificações...', 'text-indigo-400 animate-pulse');
+      try {
+        const pdfDocLib = await PDFLib.PDFDocument.load(originalPdfBytes);
+        const pages = pdfDocLib.getPages();
+        const firstPage = pages[0];
+
+        // Exporta a camada interativa para uma imagem PNG transparente
+        fabricCanvas.isDrawingMode = false;
+        const dataUrl = fabricCanvas.toDataURL({ format: 'png', multiplier: 1 });
+        const overlayImg = await pdfDocLib.embedPng(dataUrl);
+
+        const { width, height } = firstPage.getSize();
+
+        // Desenha as anotações sobre a primeira página do PDF original
+        firstPage.drawImage(overlayImg, {
+          x: 0,
+          y: 0,
+          width: width,
+          height: height
+        });
+
+        const modifiedPdfBytes = await pdfDocLib.save();
+        downloadBlob(modifiedPdfBytes, `editado_${selectedFiles[0].name}`, 'application/pdf');
+        showStatus('PDF editado baixado com sucesso!', 'text-emerald-400');
+      } catch (err) {
+        showStatus('Erro ao exportar PDF: ' + err.message, 'text-rose-400');
+      }
+    });
+
+    // Requisições e Ações de Backend (OCR, Unir, Word, Excel)
     btnMerge.addEventListener('click', async () => {
       showStatus('Unindo arquivos no navegador...', 'text-blue-400 animate-pulse');
       try {
@@ -114,36 +261,28 @@
       }
     });
 
-    // Ação: OCR para PDF (Processamento com Parâmetro de Idioma)
     btnOcr.addEventListener('click', async () => {
       const baseUrl = backendUrlInput.value.replace(/\/$/, "");
       showStatus('Processando OCR no servidor...', 'text-indigo-400 animate-pulse');
 
       const formData = new FormData();
       formData.append('file', selectedFiles[0]);
-      formData.append('lang', document.getElementById('ocrLang').value);
+      formData.append('lang', 'por');
 
       try {
         const response = await fetch(`${baseUrl}/api/ocr`, { method: 'POST', body: formData });
-        if (!response.ok) {
-          const errData = await response.json().catch(() => null);
-          throw new Error(errData ? errData.detail : `Erro HTTP ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`Erro HTTP ${response.status}`);
         const blob = await response.blob();
-        const outputName = `ocr_${selectedFiles[0].name}`;
-        downloadBlob(blob, outputName, 'application/pdf');
-        showStatus('OCR concluído com sucesso!', 'text-emerald-400');
+        downloadBlob(blob, `ocr_${selectedFiles[0].name}`, 'application/pdf');
+        showStatus('OCR concluído!', 'text-emerald-400');
       } catch (err) {
-        showStatus('Erro: ' + err.message, 'text-rose-400');
+        showStatus('Erro no OCR: ' + err.message, 'text-rose-400');
       }
     });
 
-    // Ações: Conversões Nativas Estruturais
     btnWord.addEventListener('click', () => processNativeConversion('/api/convert/word', 'docx', 'Word', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
     btnExcel.addEventListener('click', () => processNativeConversion('/api/convert/excel', 'xlsx', 'Excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
 
-    // Função genérica para envio sem parâmetros desnecessários de OCR
     async function processNativeConversion(endpoint, extension, formatName, mimeType) {
       const baseUrl = backendUrlInput.value.replace(/\/$/, "");
       showStatus(`Convertendo estrutura para ${formatName}...`, 'text-indigo-400 animate-pulse');
@@ -153,16 +292,11 @@
 
       try {
         const response = await fetch(`${baseUrl}${endpoint}`, { method: 'POST', body: formData });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => null);
-          throw new Error(errData ? errData.detail : `Erro HTTP ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`Erro HTTP ${response.status}`);
         const blob = await response.blob();
         const outputName = `${selectedFiles[0].name.replace(/\.[^/.]+$/, "")}_convertido.${extension}`;
         downloadBlob(blob, outputName, mimeType);
-        showStatus(`Conversão para ${formatName} concluída com sucesso!`, 'text-emerald-400');
+        showStatus(`Conversão para ${formatName} concluída!`, 'text-emerald-400');
       } catch (err) {
         showStatus('Erro: ' + err.message, 'text-rose-400');
       }
