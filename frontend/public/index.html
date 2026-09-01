@@ -18,6 +18,16 @@
       <input type="text" id="backend-url" value="https://pdf-ocr-backend-247y.onrender.com" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-emerald-400 focus:outline-none" placeholder="https://seu-backend.onrender.com" />
     </div>
 
+    <!-- Idioma para OCR -->
+    <div class="mb-4 text-left">
+      <label class="block text-xs font-medium text-slate-400 mb-1">Idioma do OCR:</label>
+      <select id="ocrLang" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none">
+        <option value="por" selected>Português (por)</option>
+        <option value="eng">Inglês (eng)</option>
+        <option value="spa">Espanhol (spa)</option>
+      </select>
+    </div>
+
     <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-900/50 rounded-xl p-8 cursor-pointer transition-all flex flex-col items-center justify-center mb-6">
       <p class="text-slate-300 font-medium mb-1">Arraste e solte seus PDFs aqui</p>
       <p class="text-xs text-slate-500">ou clique para selecionar</p>
@@ -96,43 +106,63 @@
           const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
           pages.forEach(p => mergedPdf.addPage(p));
         }
-        downloadBlob(await mergedPdf.save(), 'pdf_unido.pdf', 'application/pdf');
+        const pdfBytes = await mergedPdf.save();
+        downloadBlob(pdfBytes, 'pdf_unido.pdf', 'application/pdf');
         showStatus('PDFs unidos com sucesso!', 'text-emerald-400');
       } catch (err) {
         showStatus('Erro ao unir PDFs: ' + err.message, 'text-rose-400');
       }
     });
 
-    // Ação: OCR para PDF
-    btnOcr.addEventListener('click', () => processConversion('/api/ocr', 'pdf', 'OCR (PDF)', 'application/pdf'));
-
-    // Ação: OCR para Word
-    btnWord.addEventListener('click', () => processConversion('/api/convert/word', 'docx', 'Word', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
-
-    // Ação: OCR para Excel
-    btnExcel.addEventListener('click', () => processConversion('/api/convert/excel', 'xlsx', 'Excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
-
-    // Função genérica de conversão no Backend
-    async function processConversion(endpoint, extension, formatName, mimeType) {
+    // Ação: OCR para PDF (Processamento com Parâmetro de Idioma)
+    btnOcr.addEventListener('click', async () => {
       const baseUrl = backendUrlInput.value.replace(/\/$/, "");
-      showStatus(`Processando ${formatName}...`, 'text-indigo-400 animate-pulse');
+      showStatus('Processando OCR no servidor...', 'text-indigo-400 animate-pulse');
+
       const formData = new FormData();
       formData.append('file', selectedFiles[0]);
-      formData.append('lang', 'por');
+      formData.append('lang', document.getElementById('ocrLang').value);
 
       try {
-        const response = await fetch(`${baseUrl}${endpoint}`, { method: 'POST', body: formData });
-        
+        const response = await fetch(`${baseUrl}/api/ocr`, { method: 'POST', body: formData });
         if (!response.ok) {
           const errData = await response.json().catch(() => null);
-          const detail = errData ? errData.detail : `Erro HTTP ${response.status}`;
-          throw new Error(detail);
+          throw new Error(errData ? errData.detail : `Erro HTTP ${response.status}`);
         }
 
         const blob = await response.blob();
-        const outputName = `${selectedFiles[0].name.replace(/\.[^/.]+$/, "")}_converted.${extension}`;
+        const outputName = `ocr_${selectedFiles[0].name}`;
+        downloadBlob(blob, outputName, 'application/pdf');
+        showStatus('OCR concluído com sucesso!', 'text-emerald-400');
+      } catch (err) {
+        showStatus('Erro: ' + err.message, 'text-rose-400');
+      }
+    });
+
+    // Ações: Conversões Nativas Estruturais
+    btnWord.addEventListener('click', () => processNativeConversion('/api/convert/word', 'docx', 'Word', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+    btnExcel.addEventListener('click', () => processNativeConversion('/api/convert/excel', 'xlsx', 'Excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+
+    // Função genérica para envio sem parâmetros desnecessários de OCR
+    async function processNativeConversion(endpoint, extension, formatName, mimeType) {
+      const baseUrl = backendUrlInput.value.replace(/\/$/, "");
+      showStatus(`Convertendo estrutura para ${formatName}...`, 'text-indigo-400 animate-pulse');
+
+      const formData = new FormData();
+      formData.append('file', selectedFiles[0]);
+
+      try {
+        const response = await fetch(`${baseUrl}${endpoint}`, { method: 'POST', body: formData });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => null);
+          throw new Error(errData ? errData.detail : `Erro HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const outputName = `${selectedFiles[0].name.replace(/\.[^/.]+$/, "")}_convertido.${extension}`;
         downloadBlob(blob, outputName, mimeType);
-        showStatus(`Processamento de ${formatName} concluído!`, 'text-emerald-400');
+        showStatus(`Conversão para ${formatName} concluída com sucesso!`, 'text-emerald-400');
       } catch (err) {
         showStatus('Erro: ' + err.message, 'text-rose-400');
       }
@@ -144,7 +174,9 @@
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       window.URL.revokeObjectURL(url);
     }
 
